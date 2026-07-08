@@ -8,6 +8,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Necessario per creare/allegare gli asset alla Release sui tag v*.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build (${{ matrix.os }})
