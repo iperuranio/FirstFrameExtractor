@@ -22,6 +22,7 @@ APP_PATH="${REPO_ROOT}/dist/${APP_NAME}"
 COMMAND_NAME="Ripara e Apri.command"
 COMMAND_SRC="${SCRIPT_DIR}/${COMMAND_NAME}"
 BACKGROUND="${SCRIPT_DIR}/dmg-background.tiff"
+VOLICON="${REPO_ROOT}/assets/icon.icns"
 
 VOL_NAME="First Frame Extractor"
 OUTPUT_DMG="${REPO_ROOT}/dist/FirstFrameExtractor-macos.dmg"
@@ -82,6 +83,10 @@ ARGS=(
 
 if [ -f "${BACKGROUND}" ]; then
     ARGS+=(--background "${BACKGROUND}")
+fi
+
+if [ -f "${VOLICON}" ]; then
+    ARGS+=(--volicon "${VOLICON}")
 fi
 
 echo "Eseguo create-dmg..."

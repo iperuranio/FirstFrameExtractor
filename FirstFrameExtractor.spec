@@ -61,7 +61,7 @@ if is_macos:
     app = BUNDLE(
         coll,
         name="First Frame Extractor.app",
-        icon=None,
+        icon="assets/icon.icns",
         bundle_identifier="com.firstframeextractor.app",
         info_plist={
             "NSHighResolutionCapable": True,
@@ -87,4 +87,5 @@ else:
         target_arch=None,
         codesign_identity=None,
         entitlements_file=None,
+        icon="assets/icon.ico",
     )
