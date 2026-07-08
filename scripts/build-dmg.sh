@@ -6,7 +6,7 @@
 # e usa create-dmg per produrre dist/FirstFrameExtractor-macos.dmg con:
 #   - l'icona dell'app a sinistra
 #   - il link "Applications" a destra (trascina-per-installare)
-#   - lo script "Ripara e Apri.command" in basso al centro
+#   - lo script "Fix & Open.command" in basso al centro
 #   - uno sfondo scuro che guida l'utente
 #
 # Requisiti: create-dmg (brew install create-dmg).
@@ -19,7 +19,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 APP_NAME="First Frame Extractor.app"
 APP_PATH="${REPO_ROOT}/dist/${APP_NAME}"
-COMMAND_NAME="Ripara e Apri.command"
+COMMAND_NAME="Fix & Open.command"
 COMMAND_SRC="${SCRIPT_DIR}/${COMMAND_NAME}"
 BACKGROUND="${SCRIPT_DIR}/dmg-background.tiff"
 VOLICON="${REPO_ROOT}/assets/icon.icns"

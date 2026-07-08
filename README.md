@@ -14,7 +14,7 @@ Grab the latest build from the **[Releases](../../releases)** page:
 
 - **macOS** — `FirstFrameExtractor-macos.dmg` → open the `.dmg` and **drag the app into
   your Applications folder**. If macOS blocks the app on first launch (it is unsigned),
-  double-click **`Ripara e Apri.command`** in the same disk window: it removes the
+  double-click **`Fix & Open.command`** in the same disk window: it removes the
   quarantine flag and opens the app.
 - **Windows** — `FirstFrameExtractor-windows.zip` → extract and run `FirstFrameExtractor.exe`.
   SmartScreen will warn you: choose **More info → Run anyway**.

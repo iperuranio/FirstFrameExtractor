@@ -10,7 +10,7 @@ Il TIFF combinato è ciò che build-dmg.sh passa a create-dmg: Finder sceglie la
 rappresentazione giusta e lo sfondo resta nitido anche sui display Retina.
 
 Il layout è pensato per NON sovrapporsi alle etichette che Finder disegna sotto
-le icone (app, Applications, "Ripara e Apri.command"). Le coordinate delle icone
+le icone (app, Applications, "Fix & Open.command"). Le coordinate delle icone
 sono definite in build-dmg.sh e devono restare coerenti con quelle qui sotto.
 """
 
@@ -52,9 +52,9 @@ def render(scale: int) -> Image.Image:
     def text(cx, cy, string, f, fill):
         d.text((cx * s, cy * s), string, font=f, fill=fill, anchor="mm")
 
-    # Titolo + sottotitolo (zona alta, lontano dalle etichette delle icone).
+    # Title + subtitle (top area, clear of the icon labels).
     text(W / 2, 46, "First Frame Extractor", font(1, 27 * s), "#ffffff")
-    text(W / 2, 86, "Trascina l'app nella cartella Applications",
+    text(W / 2, 86, "Drag the app to the Applications folder",
          font(0, 14 * s), "#9aa0aa")
 
     # Freccia app → Applications, all'altezza del centro delle icone (y=195),
@@ -66,8 +66,8 @@ def render(scale: int) -> Image.Image:
     hh = 15 * s  # semi-altezza punta
     d.polygon([(x1, ay - hh), (x1 + 22 * s, ay), (x1, ay + hh)], fill="#5b8cff")
 
-    # Suggerimento per lo script di sblocco, sopra la sua icona (y=392).
-    text(W / 2, 322, 'macOS blocca l\'app?  Apri  "Ripara e Apri"  qui sotto',
+    # Hint for the unlock script, above its icon (y=392).
+    text(W / 2, 322, 'macOS blocking the app?  Open  "Fix & Open"  below',
          font(10, 13 * s), "#c4c9d4")
 
     return img

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """First Frame Extractor
 
-Drag & drop (o seleziona) un video MP4/MOV: il primo frame viene estratto
-immediatamente, copiato negli appunti e salvato nella cartella Download.
-PNG lossless di default, JPEG 100% se la spunta è attiva.
+Drag & drop (or pick) an MP4/MOV video: the first frame is extracted
+immediately, copied to the clipboard and saved to the Downloads folder.
+Lossless PNG by default, 100% JPEG if the checkbox is ticked.
 """
 
 import os
@@ -33,9 +33,9 @@ DOWNLOADS = Path.home() / "Downloads"
 
 
 def find_ffmpeg() -> str:
-    """Trova ffmpeg: prima il binario statico incluso nel pacchetto (build
-    standalone), poi il PATH o i percorsi tipici di Homebrew (da sorgente)."""
-    # 1. ffmpeg statico incluso via imageio-ffmpeg (eseguibile standalone)
+    """Find ffmpeg: first the static binary bundled in the package (standalone
+    build), then the PATH or the usual Homebrew locations (running from source)."""
+    # 1. Static ffmpeg bundled via imageio-ffmpeg (standalone executable)
     try:
         import imageio_ffmpeg
 
@@ -44,7 +44,7 @@ def find_ffmpeg() -> str:
             return exe
     except Exception:  # noqa: BLE001
         pass
-    # 2. PATH / Homebrew (esecuzione da sorgente)
+    # 2. PATH / Homebrew (running from source)
     found = shutil.which("ffmpeg")
     if found:
         return found
@@ -58,10 +58,10 @@ FFMPEG = find_ffmpeg()
 
 
 class ExtractWorker(QThread):
-    """Estrae il primo frame in un thread separato per non bloccare la GUI."""
+    """Extracts the first frame in a separate thread so the GUI stays responsive."""
 
-    done = Signal(str)        # percorso del file salvato
-    failed = Signal(str)      # messaggio di errore
+    done = Signal(str)        # path of the saved file
+    failed = Signal(str)      # error message
 
     def __init__(self, video_path: str, as_jpeg: bool):
         super().__init__()
@@ -77,11 +77,11 @@ class ExtractWorker(QThread):
 
             DOWNLOADS.mkdir(parents=True, exist_ok=True)
 
-            # -map_metadata -1 + -bitexact: nessun metadato/commento aggiunto da
-            # ffmpeg e nessun tag di colore o profilo ICC incorporato.
-            # Il frame esce come copia 1:1 dei pixel del video.
+            # -map_metadata -1 + -bitexact: no metadata/comments added by ffmpeg
+            # and no color tags or embedded ICC profile. The frame comes out as a
+            # 1:1 copy of the video's pixels.
             if self.as_jpeg:
-                # JPEG alla massima qualità (qscale 1 = migliore)
+                # JPEG at maximum quality (qscale 1 = best)
                 cmd = [
                     FFMPEG, "-y", "-i", str(src),
                     "-frames:v", "1",
@@ -90,7 +90,7 @@ class ExtractWorker(QThread):
                     str(out),
                 ]
             else:
-                # PNG lossless senza perdite
+                # Lossless PNG
                 cmd = [
                     FFMPEG, "-y", "-i", str(src),
                     "-frames:v", "1",
@@ -104,7 +104,7 @@ class ExtractWorker(QThread):
             )
             if proc.returncode != 0 or not out.exists():
                 err = proc.stderr.strip().splitlines()
-                msg = err[-1] if err else "ffmpeg ha fallito l'estrazione"
+                msg = err[-1] if err else "ffmpeg failed to extract the frame"
                 self.failed.emit(msg)
                 return
 
@@ -114,7 +114,7 @@ class ExtractWorker(QThread):
 
 
 class DropZone(QFrame):
-    """Area centrale che accetta il drag & drop."""
+    """Central area that accepts drag & drop."""
 
     file_dropped = Signal(str)
 
@@ -166,8 +166,8 @@ class MainWindow(QWidget):
         title = QLabel("First Frame Extractor")
         title.setObjectName("title")
 
-        subtitle = QLabel("Trascina un video MP4/MOV — il primo frame viene "
-                          "copiato negli appunti e salvato in Download.")
+        subtitle = QLabel("Drag an MP4/MOV video — the first frame is copied "
+                          "to the clipboard and saved to Downloads.")
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
 
@@ -181,11 +181,11 @@ class MainWindow(QWidget):
         self.icon.setObjectName("dropicon")
         self.icon.setAlignment(Qt.AlignCenter)
 
-        self.drop_text = QLabel("Trascina qui il video")
+        self.drop_text = QLabel("Drag your video here")
         self.drop_text.setObjectName("droptext")
         self.drop_text.setAlignment(Qt.AlignCenter)
 
-        self.browse_btn = QPushButton("Sfoglia…")
+        self.browse_btn = QPushButton("Browse…")
         self.browse_btn.setObjectName("browse")
         self.browse_btn.setCursor(Qt.PointingHandCursor)
         self.browse_btn.clicked.connect(self.choose_file)
@@ -199,14 +199,14 @@ class MainWindow(QWidget):
 
         # Options row
         opts = QHBoxLayout()
-        self.jpeg_check = QCheckBox("Salva come JPEG 100% (invece di PNG lossless)")
+        self.jpeg_check = QCheckBox("Save as 100% JPEG (instead of lossless PNG)")
         self.jpeg_check.setObjectName("jpegcheck")
         self.jpeg_check.setCursor(Qt.PointingHandCursor)
         opts.addWidget(self.jpeg_check)
         opts.addStretch()
 
         # Status bar
-        self.status = QLabel("Pronto.")
+        self.status = QLabel("Ready.")
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
 
@@ -222,7 +222,7 @@ class MainWindow(QWidget):
 
     def choose_file(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Seleziona un video", str(Path.home()),
+            self, "Select a video", str(Path.home()),
             "Video (*.mp4 *.mov *.m4v *.qt)",
         )
         if path:
@@ -233,7 +233,7 @@ class MainWindow(QWidget):
             return
         self.set_busy(True)
         name = Path(path).name
-        self.set_status(f"Estrazione da “{name}”…", "busy")
+        self.set_status(f"Extracting from “{name}”…", "busy")
 
         self.worker = ExtractWorker(path, self.jpeg_check.isChecked())
         self.worker.done.connect(self.on_done)
@@ -241,18 +241,18 @@ class MainWindow(QWidget):
         self.worker.start()
 
     def on_done(self, out_path: str):
-        # Copia negli appunti
+        # Copy to clipboard
         copied = self.copy_to_clipboard(out_path)
         self.set_busy(False)
         name = Path(out_path).name
         if copied:
-            self.set_status(f"✓ Copiato negli appunti e salvato: {name}", "ok")
+            self.set_status(f"✓ Copied to clipboard and saved: {name}", "ok")
         else:
-            self.set_status(f"✓ Salvato: {name} (copia negli appunti non riuscita)", "ok")
+            self.set_status(f"✓ Saved: {name} (couldn't copy to clipboard)", "ok")
 
     def on_failed(self, msg: str):
         self.set_busy(False)
-        self.set_status(f"✗ Errore: {msg}", "err")
+        self.set_status(f"✗ Error: {msg}", "err")
 
     def copy_to_clipboard(self, image_path: str) -> bool:
         img = QImage(image_path)
@@ -266,7 +266,7 @@ class MainWindow(QWidget):
     def set_busy(self, busy: bool):
         self.browse_btn.setEnabled(not busy)
         self.jpeg_check.setEnabled(not busy)
-        self.drop_text.setText("Estrazione in corso…" if busy else "Trascina qui il video")
+        self.drop_text.setText("Extracting…" if busy else "Drag your video here")
 
     def set_status(self, text: str, kind: str = ""):
         self.status.setText(text)
