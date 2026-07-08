@@ -6,7 +6,7 @@
 # e usa create-dmg per produrre dist/FirstFrameExtractor-macos.dmg con:
 #   - l'icona dell'app a sinistra
 #   - il link "Applications" a destra (trascina-per-installare)
-#   - lo script "Fix & Open.command" in basso al centro
+#   - il file "Open if blocked.txt" in basso al centro (istruzioni di sblocco)
 #   - uno sfondo scuro che guida l'utente
 #
 # Requisiti: create-dmg (brew install create-dmg).
@@ -19,8 +19,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 APP_NAME="First Frame Extractor.app"
 APP_PATH="${REPO_ROOT}/dist/${APP_NAME}"
-COMMAND_NAME="Fix & Open.command"
-COMMAND_SRC="${SCRIPT_DIR}/${COMMAND_NAME}"
+HELP_NAME="Open if blocked.txt"
+HELP_SRC="${SCRIPT_DIR}/${HELP_NAME}"
 BACKGROUND="${SCRIPT_DIR}/dmg-background.tiff"
 VOLICON="${REPO_ROOT}/assets/icon.icns"
 
@@ -39,16 +39,14 @@ if [ ! -d "${APP_PATH}" ]; then
     exit 1
 fi
 
-if [ ! -f "${COMMAND_SRC}" ]; then
-    echo "ERRORE: script non trovato: ${COMMAND_SRC}" >&2
+if [ ! -f "${HELP_SRC}" ]; then
+    echo "ERRORE: file istruzioni non trovato: ${HELP_SRC}" >&2
     exit 1
 fi
 
 # --- Staging ---------------------------------------------------------------
 # STAGING contiene SOLO l'app (diventa il contenuto principale del DMG).
-# Lo script .command viene aggiunto a parte con --add-file, da una cartella
-# dove possiamo garantirne il bit di esecuzione (git/CI potrebbe non
-# preservare i permessi).
+# Il file di istruzioni viene aggiunto a parte con --add-file.
 STAGING="$(mktemp -d)"
 EXTRA="$(mktemp -d)"
 trap 'rm -rf "${STAGING}" "${EXTRA}"' EXIT
@@ -56,9 +54,8 @@ trap 'rm -rf "${STAGING}" "${EXTRA}"' EXIT
 echo "Staging in ${STAGING}"
 cp -R "${APP_PATH}" "${STAGING}/"
 
-COMMAND_STAGED="${EXTRA}/${COMMAND_NAME}"
-cp "${COMMAND_SRC}" "${COMMAND_STAGED}"
-chmod +x "${COMMAND_STAGED}"
+HELP_STAGED="${EXTRA}/${HELP_NAME}"
+cp "${HELP_SRC}" "${HELP_STAGED}"
 
 # Idempotenza: rimuovi eventuale DMG precedente.
 rm -f "${OUTPUT_DMG}"
@@ -76,7 +73,7 @@ ARGS=(
     --icon-size "${ICON_SIZE}"
     --icon "${APP_NAME}" 165 195
     --app-drop-link 455 195
-    --add-file "${COMMAND_NAME}" "${COMMAND_STAGED}" 310 392
+    --add-file "${HELP_NAME}" "${HELP_STAGED}" 310 392
     --hdiutil-quiet
     --no-internet-enable
 )

@@ -1,0 +1,35 @@
+First Frame Extractor — how to open it if macOS blocks the app
+==============================================================
+
+macOS blocks unsigned apps downloaded from the internet, with a message like
+"Apple could not verify ... is free of malware that may harm your Mac".
+This is expected: the app simply isn't code-signed. Here's how to open it.
+
+
+FIX IT ONCE (Terminal — the reliable way)
+-----------------------------------------
+
+1. Drag "First Frame Extractor" into your Applications folder.
+
+2. Open the Terminal app:
+   press Cmd-Space, type  Terminal , press Enter.
+
+3. Copy the line below, paste it into Terminal, press Enter:
+
+   xattr -dr com.apple.quarantine "/Applications/First Frame Extractor.app"
+
+4. Open the app normally with a double-click. Done — no more warnings.
+
+
+ALTERNATIVE (no Terminal)
+-------------------------
+
+1. Double-click the app (it will be blocked the first time).
+2. Open  System Settings > Privacy & Security .
+3. Scroll to the bottom and click  "Open Anyway"  next to
+   "First Frame Extractor", then confirm.
+
+
+Why this happens: removing all warnings entirely would require Apple
+notarization (a paid Apple Developer account). The steps above are the free,
+standard way to run unsigned apps.

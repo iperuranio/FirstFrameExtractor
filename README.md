@@ -13,14 +13,25 @@ static `ffmpeg` binary. Nothing to install.
 Grab the latest build from the **[Releases](../../releases)** page:
 
 - **macOS** — `FirstFrameExtractor-macos.dmg` → open the `.dmg` and **drag the app into
-  your Applications folder**. If macOS blocks the app on first launch (it is unsigned),
-  double-click **`Fix & Open.command`** in the same disk window: it removes the
-  quarantine flag and opens the app.
+  your Applications folder**. Because the app is unsigned, macOS (Gatekeeper) will block
+  it on first launch with *"Apple could not verify … is free of malware"*. To fix it once:
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/First Frame Extractor.app"
+  ```
+
+  Open the **Terminal** app (Cmd-Space → type `Terminal`), paste the line above, press
+  Enter, then open the app normally. The same instructions ship inside the `.dmg` as
+  **`Open if blocked.txt`**.
+
+  *No Terminal?* Double-click the app, then go to **System Settings → Privacy & Security**,
+  scroll down and click **Open Anyway**.
 - **Windows** — `FirstFrameExtractor-windows.zip` → extract and run `FirstFrameExtractor.exe`.
   SmartScreen will warn you: choose **More info → Run anyway**.
 
-> ⚠️ The binaries are **unsigned** (code signing requires paid certificates and is not
-> included), so security warnings on first launch are expected.
+> ⚠️ The binaries are **unsigned** (removing the warnings entirely requires paid Apple
+> notarization / a code-signing certificate), so security prompts on first launch are
+> expected.
 
 ## Supported formats
 

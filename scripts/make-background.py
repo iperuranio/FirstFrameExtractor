@@ -10,7 +10,7 @@ Il TIFF combinato è ciò che build-dmg.sh passa a create-dmg: Finder sceglie la
 rappresentazione giusta e lo sfondo resta nitido anche sui display Retina.
 
 Il layout è pensato per NON sovrapporsi alle etichette che Finder disegna sotto
-le icone (app, Applications, "Fix & Open.command"). Le coordinate delle icone
+le icone (app, Applications, "Open if blocked.txt"). Le coordinate delle icone
 sono definite in build-dmg.sh e devono restare coerenti con quelle qui sotto.
 """
 
@@ -66,8 +66,8 @@ def render(scale: int) -> Image.Image:
     hh = 15 * s  # semi-altezza punta
     d.polygon([(x1, ay - hh), (x1 + 22 * s, ay), (x1, ay + hh)], fill="#5b8cff")
 
-    # Hint for the unlock script, above its icon (y=392).
-    text(W / 2, 322, 'macOS blocking the app?  Open  "Fix & Open"  below',
+    # Hint pointing to the instructions file, above its icon (y=392).
+    text(W / 2, 322, 'macOS blocking the app?  Open  "Open if blocked.txt"  below',
          font(10, 13 * s), "#c4c9d4")
 
     return img
