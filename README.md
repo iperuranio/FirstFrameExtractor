@@ -14,7 +14,9 @@ The app has two tabs:
 
 - **Extract** — drop one video to extract its first frame (plus its duration info).
 - **Durations** — drop **multiple** videos; it lists each one's exact duration in drop
-  order, without extracting anything.
+  order, without extracting anything. Each row starts with a prominent **seconds badge**
+  (duration rounded **up** to whole seconds: 4 s → `4s`, 4 s + 1 frame → `5s`) — **green**
+  when the clip is exactly that many seconds, **blue** when rounded up.
 
 > Note on timecode: a clip that is exactly 4 s long has a **duration** of `00:00:04:00`
 > (96 frames at 24 fps), while its **last frame** sits at `00:00:03:23` — because frame

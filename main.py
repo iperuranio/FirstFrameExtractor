@@ -108,6 +108,13 @@ def _fmt_secs(secs: float) -> str:
     return f"{secs:.3f}".rstrip("0").rstrip(".") + " s"
 
 
+def duration_bucket(frames: int, fps: float) -> int:
+    """Whole-seconds class, rounded UP: exactly N s -> N, N s + 1 frame -> N+1."""
+    n = max(1, int(round(fps)))
+    whole, extra = divmod(frames, n)
+    return whole + (1 if extra else 0)
+
+
 def _last_frame_count(text: str) -> int:
     matches = re.findall(r"frame=\s*(\d+)", text)
     return int(matches[-1]) if matches else 0
@@ -434,11 +441,53 @@ class ExtractTab(QWidget):
         self.status.style().polish(self.status)
 
 
+class _DurationRow(QWidget):
+    """One list row: a prominent seconds-bucket badge + the technical detail."""
+
+    def __init__(self, name: str, mono):
+        super().__init__()
+        self.setObjectName("row")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(6, 3, 6, 3)
+        lay.setSpacing(12)
+
+        self.badge = QLabel("…")
+        self.badge.setObjectName("badge")
+        self.badge.setAlignment(Qt.AlignCenter)
+        self.badge.setFixedWidth(58)
+        self.badge.setProperty("state", "loading")
+
+        self.text = QLabel(name)
+        self.text.setObjectName("rowtext")
+        self.text.setFont(mono)
+        self.text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        lay.addWidget(self.badge)
+        lay.addWidget(self.text, stretch=1)
+
+    def _restyle(self):
+        self.badge.style().unpolish(self.badge)
+        self.badge.style().polish(self.badge)
+
+    def set_result(self, bucket: int, exact: bool, text: str):
+        self.badge.setText(f"{bucket}s")
+        self.badge.setProperty("state", "exact" if exact else "round")
+        self._restyle()
+        self.text.setText(text)
+
+    def set_error(self, name: str, err: str):
+        self.badge.setText("—")
+        self.badge.setProperty("state", "error")
+        self._restyle()
+        self.text.setText(f"{name}   (error: {err})")
+
+
 class DurationsTab(QWidget):
     """Durations only: accepts multiple videos, lists each one's exact duration.
 
-    No frame is extracted, copied or saved. Files are probed one at a time so
-    the list fills in drop order and many files don't spawn many processes.
+    Each row carries a prominent seconds-bucket badge (rounded up: 4 s -> 4s,
+    4 s + 1 frame -> 5s). No frame is extracted, copied or saved. Files are
+    probed one at a time so the list fills in drop order.
     """
 
     def __init__(self):
@@ -446,8 +495,8 @@ class DurationsTab(QWidget):
         self._queue: deque = deque()
         self._active: ProbeWorker | None = None
 
-        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        mono.setPointSize(13)
+        self._mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        self._mono.setPointSize(13)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 22)
@@ -466,9 +515,13 @@ class DurationsTab(QWidget):
 
         self.list = QListWidget()
         self.list.setObjectName("durlist")
-        self.list.setFont(mono)
         self.list.setSelectionMode(QListWidget.ExtendedSelection)
         self.list.setUniformItemSizes(True)
+
+        # Legend for the badge colours.
+        legend = QLabel("Badge = duration rounded up to whole seconds   ·   "
+                        "green = exact,  blue = rounded up")
+        legend.setObjectName("subtitle")
 
         bar = QHBoxLayout()
         self.count = QLabel("No files yet.")
@@ -484,6 +537,7 @@ class DurationsTab(QWidget):
         root.addWidget(subtitle)
         root.addWidget(self.drop)
         root.addWidget(self.list, stretch=1)
+        root.addWidget(legend)
         root.addLayout(bar)
 
     def choose_files(self):
@@ -496,39 +550,43 @@ class DurationsTab(QWidget):
 
     def add_files(self, paths: list):
         for path in paths:
-            item = QListWidgetItem(self._row_text(path, None, None))
+            item = QListWidgetItem()
             self.list.addItem(item)
-            self._queue.append((item, path))
+            row = _DurationRow(Path(path).name, self._mono)
+            item.setSizeHint(row.sizeHint())
+            self.list.setItemWidget(item, row)
+            self._queue.append((row, path))
         self._update_count()
         self._pump()
 
     def _pump(self):
         if self._active is not None or not self._queue:
             return
-        item, path = self._queue.popleft()
+        row, path = self._queue.popleft()
         worker = ProbeWorker(path)
         self._active = worker
-        worker.done.connect(lambda d, it=item, p=path: self._finish(it, p, d, None))
-        worker.failed.connect(lambda m, it=item, p=path: self._finish(it, p, None, m))
+        worker.done.connect(lambda d, r=row, p=path: self._finish(r, p, d, None))
+        worker.failed.connect(lambda m, r=row, p=path: self._finish(r, p, None, m))
         worker.start()
 
-    def _finish(self, item, path, d, err):
+    def _finish(self, row, path, d, err):
         self._active = None
         try:
-            item.setText(self._row_text(path, d, err))
-            if d:
-                item.setToolTip(self._tooltip(path, d))
+            if err:
+                row.set_error(Path(path).name, err)
+            else:
+                nominal = max(1, int(round(d["fps"])))
+                exact = d["frames"] % nominal == 0
+                row.set_result(duration_bucket(d["frames"], d["fps"]), exact,
+                               self._row_text(path, d))
+                row.setToolTip(self._tooltip(path, d))
         except RuntimeError:
-            pass  # the item was cleared while probing
+            pass  # the row was cleared while probing
         self._pump()
 
     @staticmethod
-    def _row_text(path, d, err) -> str:
+    def _row_text(path, d) -> str:
         name = Path(path).name
-        if d is None and err is None:
-            return f"{'…':<11}  {name}"
-        if err:
-            return f"{'—':<11}  {name}   (error: {err})"
         parts = [f"{d['frames']}f @ {_fmt_fps(d['fps'])} fps", _fmt_secs(d['seconds'])]
         if d.get("start_tc"):
             parts.append(f"TC {d['start_tc']}→{d['end_tc']}")
@@ -666,8 +724,21 @@ QTabBar::tab:selected { color: #ffffff; border-bottom: 2px solid #5b8cff; }
     color: #d7dbe4;
     outline: none;
 }
-#durlist::item { padding: 6px 8px; border-radius: 6px; }
-#durlist::item:selected { background: #22314f; color: #ffffff; }
+#durlist::item { border-radius: 6px; }
+#durlist::item:selected { background: #22314f; }
+
+#row, #rowtext { background: transparent; }
+#rowtext { color: #d7dbe4; }
+#badge {
+    border-radius: 10px;
+    padding: 4px 0;
+    font-size: 15px;
+    font-weight: 800;
+}
+#badge[state="loading"] { background: #2c3140; color: #8b919c; }
+#badge[state="exact"]   { background: #57d38c; color: #08130c; }
+#badge[state="round"]   { background: #5b8cff; color: #0b0d12; }
+#badge[state="error"]   { background: #ff6b6b; color: #2a0a0a; }
 
 #ghost {
     background: transparent;
