@@ -5,6 +5,11 @@ Drag an MP4/MOV video onto the window (or click **Browse…**): the first frame 
 **copied to the clipboard** and **saved to your Downloads folder**. Lossless PNG by
 default, or 100% JPEG when the checkbox is ticked.
 
+It also shows the clip's **frame-accurate duration** as a timecode (`HH:MM:SS:FF`), the
+exact frame count and fps, and the start → end **timecode** when the file has one — so you
+can tell at a glance whether a clip is exactly 5 s or 5 s and a few frames. The duration is
+the real length (the difference), independent of any embedded start timecode.
+
 The executables are **standalone**: they bundle the Python interpreter, PySide6 and a
 static `ffmpeg` binary. Nothing to install.
 
