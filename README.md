@@ -10,6 +10,17 @@ exact frame count and fps, and the start → end **timecode** when the file has 
 can tell at a glance whether a clip is exactly 5 s or 5 s and a few frames. The duration is
 the real length (the difference), independent of any embedded start timecode.
 
+The app has two tabs:
+
+- **Extract** — drop one video to extract its first frame (plus its duration info).
+- **Durations** — drop **multiple** videos; it lists each one's exact duration in drop
+  order, without extracting anything.
+
+> Note on timecode: a clip that is exactly 4 s long has a **duration** of `00:00:04:00`
+> (96 frames at 24 fps), while its **last frame** sits at `00:00:03:23` — because frame
+> positions are counted from 0. The Duration line is the length; the Timecode line shows
+> the first → last frame positions.
+
 The executables are **standalone**: they bundle the Python interpreter, PySide6 and a
 static `ffmpeg` binary. Nothing to install.
 

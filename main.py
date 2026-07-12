@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -24,7 +25,10 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -71,9 +75,13 @@ _FPS_RATIONALS = {
 
 
 def exact_fps(fps: float) -> float:
-    """Map a rounded fps (e.g. 23.98) to its exact rational (24000/1001)."""
+    """Map a rounded NTSC fps (e.g. 23.98) to its exact rational (24000/1001).
+
+    The threshold is tight on purpose: 23.98 and 24.00 differ by only 0.02, so
+    a true 24.000 fps must NOT be turned into 23.976.
+    """
     for approx, real in _FPS_RATIONALS.items():
-        if abs(fps - approx) < 0.03:
+        if abs(fps - approx) < 0.01:
             return real
     return fps
 
@@ -229,24 +237,62 @@ class ExtractWorker(QThread):
 
 
 class DropZone(QFrame):
-    """Central area that accepts drag & drop."""
+    """Self-contained drop area for videos. Emits the list of dropped videos."""
 
-    file_dropped = Signal(str)
+    files_dropped = Signal(list)
 
-    def __init__(self):
+    def __init__(self, caption: str, button_text: str | None = None):
         super().__init__()
         self.setObjectName("dropzone")
         self.setAcceptDrops(True)
 
-    def dragEnterEvent(self, event):
+        lay = QVBoxLayout(self)
+        lay.setAlignment(Qt.AlignCenter)
+        lay.setSpacing(10)
+
+        icon = QLabel("⬇")
+        icon.setObjectName("dropicon")
+        icon.setAlignment(Qt.AlignCenter)
+
+        self._caption = QLabel(caption)
+        self._caption.setObjectName("droptext")
+        self._caption.setAlignment(Qt.AlignCenter)
+        self._caption.setWordWrap(True)
+
+        lay.addStretch()
+        lay.addWidget(icon)
+        lay.addWidget(self._caption)
+
+        self.button: QPushButton | None = None
+        if button_text:
+            self.button = QPushButton(button_text)
+            self.button.setObjectName("browse")
+            self.button.setCursor(Qt.PointingHandCursor)
+            lay.addSpacing(6)
+            lay.addWidget(self.button, alignment=Qt.AlignCenter)
+
+        lay.addStretch()
+
+    def set_caption(self, text: str):
+        self._caption.setText(text)
+
+    @staticmethod
+    def _videos(event) -> list:
+        out = []
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if Path(url.toLocalFile()).suffix.lower() in VIDEO_EXTS:
-                    event.acceptProposedAction()
-                    self.setProperty("hover", True)
-                    self._restyle()
-                    return
-        event.ignore()
+                path = url.toLocalFile()
+                if Path(path).suffix.lower() in VIDEO_EXTS:
+                    out.append(path)
+        return out
+
+    def dragEnterEvent(self, event):
+        if self._videos(event):
+            event.acceptProposedAction()
+            self.setProperty("hover", True)
+            self._restyle()
+        else:
+            event.ignore()
 
     def dragLeaveEvent(self, event):
         self.setProperty("hover", False)
@@ -255,65 +301,36 @@ class DropZone(QFrame):
     def dropEvent(self, event):
         self.setProperty("hover", False)
         self._restyle()
-        for url in event.mimeData().urls():
-            path = url.toLocalFile()
-            if Path(path).suffix.lower() in VIDEO_EXTS:
-                self.file_dropped.emit(path)
-                return
+        videos = self._videos(event)
+        if videos:
+            self.files_dropped.emit(videos)
 
     def _restyle(self):
         self.style().unpolish(self)
         self.style().polish(self)
 
 
-class MainWindow(QWidget):
+class ExtractTab(QWidget):
+    """First-frame extractor: one video -> saved frame + clipboard + info panel."""
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("First Frame Extractor")
-        self.setMinimumSize(560, 460)
-        self.setAcceptDrops(False)
         self.worker: ExtractWorker | None = None
         self.probe: ProbeWorker | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(28, 28, 28, 28)
-        root.setSpacing(18)
-
-        title = QLabel("First Frame Extractor")
-        title.setObjectName("title")
+        root.setContentsMargins(24, 20, 24, 22)
+        root.setSpacing(16)
 
         subtitle = QLabel("Drag an MP4/MOV video — the first frame is copied "
                           "to the clipboard and saved to Downloads.")
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
 
-        # Drop zone
-        self.drop = DropZone()
-        drop_layout = QVBoxLayout(self.drop)
-        drop_layout.setAlignment(Qt.AlignCenter)
-        drop_layout.setSpacing(10)
+        self.drop = DropZone("Drag your video here", button_text="Browse…")
+        self.drop.button.clicked.connect(self.choose_file)
+        self.drop.files_dropped.connect(self.on_files)
 
-        self.icon = QLabel("⬇")
-        self.icon.setObjectName("dropicon")
-        self.icon.setAlignment(Qt.AlignCenter)
-
-        self.drop_text = QLabel("Drag your video here")
-        self.drop_text.setObjectName("droptext")
-        self.drop_text.setAlignment(Qt.AlignCenter)
-
-        self.browse_btn = QPushButton("Browse…")
-        self.browse_btn.setObjectName("browse")
-        self.browse_btn.setCursor(Qt.PointingHandCursor)
-        self.browse_btn.clicked.connect(self.choose_file)
-
-        drop_layout.addStretch()
-        drop_layout.addWidget(self.icon)
-        drop_layout.addWidget(self.drop_text)
-        drop_layout.addSpacing(6)
-        drop_layout.addWidget(self.browse_btn, alignment=Qt.AlignCenter)
-        drop_layout.addStretch()
-
-        # Options row
         opts = QHBoxLayout()
         self.jpeg_check = QCheckBox("Save as 100% JPEG (instead of lossless PNG)")
         self.jpeg_check.setObjectName("jpegcheck")
@@ -330,21 +347,18 @@ class MainWindow(QWidget):
         self.info.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.info.hide()
 
-        # Status bar
         self.status = QLabel("Ready.")
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
 
-        root.addWidget(title)
         root.addWidget(subtitle)
         root.addWidget(self.drop, stretch=1)
         root.addLayout(opts)
         root.addWidget(self.info)
         root.addWidget(self.status)
 
-        self.drop.file_dropped.connect(self.start_extraction)
-
-    # ---- actions -------------------------------------------------------
+    def on_files(self, paths: list):
+        self.start_extraction(paths[0])
 
     def choose_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -375,7 +389,6 @@ class MainWindow(QWidget):
         self.probe.start()
 
     def on_done(self, out_path: str):
-        # Copy to clipboard
         copied = self.copy_to_clipboard(out_path)
         self.set_busy(False)
         name = Path(out_path).name
@@ -408,18 +421,161 @@ class MainWindow(QWidget):
         QGuiApplication.clipboard().setImage(img)
         return True
 
-    # ---- ui helpers ----------------------------------------------------
-
     def set_busy(self, busy: bool):
-        self.browse_btn.setEnabled(not busy)
+        if self.drop.button:
+            self.drop.button.setEnabled(not busy)
         self.jpeg_check.setEnabled(not busy)
-        self.drop_text.setText("Extracting…" if busy else "Drag your video here")
+        self.drop.set_caption("Extracting…" if busy else "Drag your video here")
 
     def set_status(self, text: str, kind: str = ""):
         self.status.setText(text)
         self.status.setProperty("kind", kind)
         self.status.style().unpolish(self.status)
         self.status.style().polish(self.status)
+
+
+class DurationsTab(QWidget):
+    """Durations only: accepts multiple videos, lists each one's exact duration.
+
+    No frame is extracted, copied or saved. Files are probed one at a time so
+    the list fills in drop order and many files don't spawn many processes.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._queue: deque = deque()
+        self._active: ProbeWorker | None = None
+
+        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        mono.setPointSize(13)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 22)
+        root.setSpacing(16)
+
+        subtitle = QLabel("Drop one or more videos — nothing is extracted, you only "
+                          "get each clip's exact duration, in drop order.")
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+
+        self.drop = DropZone("Drop videos here (multiple allowed)",
+                             button_text="Add videos…")
+        self.drop.setMinimumHeight(130)
+        self.drop.button.clicked.connect(self.choose_files)
+        self.drop.files_dropped.connect(self.add_files)
+
+        self.list = QListWidget()
+        self.list.setObjectName("durlist")
+        self.list.setFont(mono)
+        self.list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.list.setUniformItemSizes(True)
+
+        bar = QHBoxLayout()
+        self.count = QLabel("No files yet.")
+        self.count.setObjectName("status")
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setObjectName("ghost")
+        self.clear_btn.setCursor(Qt.PointingHandCursor)
+        self.clear_btn.clicked.connect(self.clear_list)
+        bar.addWidget(self.count)
+        bar.addStretch()
+        bar.addWidget(self.clear_btn)
+
+        root.addWidget(subtitle)
+        root.addWidget(self.drop)
+        root.addWidget(self.list, stretch=1)
+        root.addLayout(bar)
+
+    def choose_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Select videos", str(Path.home()),
+            "Video (*.mp4 *.mov *.m4v *.qt)",
+        )
+        if paths:
+            self.add_files(paths)
+
+    def add_files(self, paths: list):
+        for path in paths:
+            item = QListWidgetItem(self._row_text(path, None, None))
+            self.list.addItem(item)
+            self._queue.append((item, path))
+        self._update_count()
+        self._pump()
+
+    def _pump(self):
+        if self._active is not None or not self._queue:
+            return
+        item, path = self._queue.popleft()
+        worker = ProbeWorker(path)
+        self._active = worker
+        worker.done.connect(lambda d, it=item, p=path: self._finish(it, p, d, None))
+        worker.failed.connect(lambda m, it=item, p=path: self._finish(it, p, None, m))
+        worker.start()
+
+    def _finish(self, item, path, d, err):
+        self._active = None
+        try:
+            item.setText(self._row_text(path, d, err))
+            if d:
+                item.setToolTip(self._tooltip(path, d))
+        except RuntimeError:
+            pass  # the item was cleared while probing
+        self._pump()
+
+    @staticmethod
+    def _row_text(path, d, err) -> str:
+        name = Path(path).name
+        if d is None and err is None:
+            return f"{'…':<11}  {name}"
+        if err:
+            return f"{'—':<11}  {name}   (error: {err})"
+        parts = [f"{d['frames']}f @ {_fmt_fps(d['fps'])} fps", _fmt_secs(d['seconds'])]
+        if d.get("start_tc"):
+            parts.append(f"TC {d['start_tc']}→{d['end_tc']}")
+        return f"{d['duration_tc']:<11}  {name}   ({' · '.join(parts)})"
+
+    @staticmethod
+    def _tooltip(path, d) -> str:
+        lines = [
+            f"Duration  {d['duration_tc']}",
+            f"Frames    {d['frames']} @ {_fmt_fps(d['fps'])} fps",
+            f"Seconds   {_fmt_secs(d['seconds'])}",
+        ]
+        if d.get("start_tc"):
+            lines.append(f"Timecode  {d['start_tc']} → {d['end_tc']}")
+        lines += ["", str(path)]
+        return "\n".join(lines)
+
+    def clear_list(self):
+        self.list.clear()
+        self._queue.clear()
+        self._update_count()
+
+    def _update_count(self):
+        n = self.list.count()
+        self.count.setText("No files yet." if n == 0 else f"{n} file(s)")
+
+
+class MainWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("First Frame Extractor")
+        self.setMinimumSize(600, 540)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        title = QLabel("First Frame Extractor")
+        title.setObjectName("title")
+        title.setContentsMargins(24, 20, 24, 10)
+
+        tabs = QTabWidget()
+        tabs.addTab(ExtractTab(), "Extract")
+        tabs.addTab(DurationsTab(), "Durations")
+
+        root.addWidget(title)
+        root.addWidget(tabs, stretch=1)
 
 
 STYLE = """
@@ -486,6 +642,42 @@ QWidget {
 #status[kind="ok"]   { color: #57d38c; }
 #status[kind="err"]  { color: #ff6b6b; }
 #status[kind="busy"] { color: #5b8cff; }
+
+QTabWidget::pane { border: none; }
+QTabWidget::tab-bar { left: 22px; }
+QTabBar::tab {
+    background: transparent;
+    color: #9aa0aa;
+    padding: 8px 14px;
+    margin-right: 6px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 14px;
+    font-weight: 600;
+}
+QTabBar::tab:hover { color: #c4c9d4; }
+QTabBar::tab:selected { color: #ffffff; border-bottom: 2px solid #5b8cff; }
+
+#durlist {
+    background: #12151d;
+    border: 1px solid #232838;
+    border-radius: 10px;
+    padding: 6px;
+    color: #d7dbe4;
+    outline: none;
+}
+#durlist::item { padding: 6px 8px; border-radius: 6px; }
+#durlist::item:selected { background: #22314f; color: #ffffff; }
+
+#ghost {
+    background: transparent;
+    color: #9aa0aa;
+    border: 1px solid #2c3140;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-weight: 600;
+}
+#ghost:hover { color: #e6e8ec; border-color: #3a4150; }
 """
 
 
