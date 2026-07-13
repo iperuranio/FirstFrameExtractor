@@ -324,6 +324,9 @@ class ExtractTab(QWidget):
         super().__init__()
         self.worker: ExtractWorker | None = None
         self.probe: ProbeWorker | None = None
+        # Keep a reference to every running thread until it truly finishes, so a
+        # QThread is never destroyed while still running (which aborts the app).
+        self._live: set = set()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 22)
@@ -364,6 +367,16 @@ class ExtractTab(QWidget):
         root.addWidget(self.info)
         root.addWidget(self.status)
 
+    def _track(self, worker):
+        """Hold a reference until the thread's finished() fires (run() returned),
+        then release it — so it is never garbage-collected while running."""
+        self._live.add(worker)
+        worker.finished.connect(lambda w=worker: self._live.discard(w))
+
+    def stop_threads(self):
+        for worker in list(self._live):
+            worker.wait(5000)
+
     def on_files(self, paths: list):
         self.start_extraction(paths[0])
 
@@ -383,6 +396,7 @@ class ExtractTab(QWidget):
         self.set_status(f"Extracting from “{name}”…", "busy")
 
         self.worker = ExtractWorker(path, self.jpeg_check.isChecked())
+        self._track(self.worker)
         self.worker.done.connect(self.on_done)
         self.worker.failed.connect(self.on_failed)
         self.worker.start()
@@ -391,6 +405,7 @@ class ExtractTab(QWidget):
         self.info.show()
         self.info.setText("Reading video info…")
         self.probe = ProbeWorker(path)
+        self._track(self.probe)
         self.probe.done.connect(self.on_probe_done)
         self.probe.failed.connect(self.on_probe_failed)
         self.probe.start()
@@ -494,6 +509,8 @@ class DurationsTab(QWidget):
         super().__init__()
         self._queue: deque = deque()
         self._active: ProbeWorker | None = None
+        # Keep running threads referenced until finished() (see _released).
+        self._live: set = set()
 
         self._mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         self._mono.setPointSize(13)
@@ -565,12 +582,15 @@ class DurationsTab(QWidget):
         row, path = self._queue.popleft()
         worker = ProbeWorker(path)
         self._active = worker
-        worker.done.connect(lambda d, r=row, p=path: self._finish(r, p, d, None))
-        worker.failed.connect(lambda m, r=row, p=path: self._finish(r, p, None, m))
+        self._live.add(worker)
+        worker.done.connect(lambda d, r=row, p=path: self._apply(r, p, d, None))
+        worker.failed.connect(lambda m, r=row, p=path: self._apply(r, p, None, m))
+        worker.finished.connect(lambda w=worker: self._released(w))
         worker.start()
 
-    def _finish(self, row, path, d, err):
-        self._active = None
+    def _apply(self, row, path, d, err):
+        # Update the row only. The worker is released on finished() (below),
+        # never here — dropping a still-running QThread would abort the app.
         try:
             if err:
                 row.set_error(Path(path).name, err)
@@ -582,7 +602,18 @@ class DurationsTab(QWidget):
                 row.setToolTip(self._tooltip(path, d))
         except RuntimeError:
             pass  # the row was cleared while probing
+
+    def _released(self, worker):
+        # QThread.finished(): run() has returned, so releasing it is safe.
+        self._live.discard(worker)
+        if self._active is worker:
+            self._active = None
         self._pump()
+
+    def stop_threads(self):
+        self._queue.clear()
+        for worker in list(self._live):
+            worker.wait(5000)
 
     @staticmethod
     def _row_text(path, d) -> str:
@@ -628,12 +659,21 @@ class MainWindow(QWidget):
         title.setObjectName("title")
         title.setContentsMargins(24, 20, 24, 10)
 
+        self._extract = ExtractTab()
+        self._durations = DurationsTab()
         tabs = QTabWidget()
-        tabs.addTab(ExtractTab(), "Extract")
-        tabs.addTab(DurationsTab(), "Durations")
+        tabs.addTab(self._extract, "Extract")
+        tabs.addTab(self._durations, "Durations")
 
         root.addWidget(title)
         root.addWidget(tabs, stretch=1)
+
+    def closeEvent(self, event):
+        # Let running probe/extract threads finish before teardown, otherwise a
+        # QThread destroyed mid-run would abort on quit.
+        for tab in (self._extract, self._durations):
+            tab.stop_threads()
+        super().closeEvent(event)
 
 
 STYLE = """
