@@ -39,6 +39,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      # La versione sta in FirstFrameExtractor.spec (CFBundleShortVersionString): l'app Mac la dichiara
+      # nell'Info.plist, lo zip Windows in version.txt, ed è lì che la legge l'app Nexus.
+      # Un tag con un'altra versione fa fallire la build: una release non contraddice mai la sua app.
+      - name: Version
+        shell: bash
+        run: |
+          version=$(sed -n 's/.*"CFBundleShortVersionString": *"\([^"]*\)".*/\1/p' FirstFrameExtractor.spec | head -1)
+          [ -n "$version" ] || { echo "ERRORE: CFBundleShortVersionString non trovato in FirstFrameExtractor.spec"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "ERRORE: il tag $GITHUB_REF_NAME non corrisponde alla versione $version di FirstFrameExtractor.spec"; exit 1
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm FirstFrameExtractor.spec
 
@@ -55,7 +68,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/FirstFrameExtractor.exe" -DestinationPath "dist/${{ matrix.artifact }}.zip"
+          Set-Content -Path "dist/version.txt" -Value $env:APP_VERSION -Encoding utf8NoBOM
+          Compress-Archive -Path "dist/FirstFrameExtractor.exe", "dist/version.txt" -DestinationPath "dist/${{ matrix.artifact }}.zip"
 
       - name: Upload artifact (macOS)
         if: runner.os == 'macOS'
