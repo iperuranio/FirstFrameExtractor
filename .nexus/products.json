@@ -5,6 +5,7 @@
       "name": "First Frame Extractor",
       "kind": "app",
       "tagPrefix": "v",
+      "icon": "assets/icon.png",
       "platforms": {
         "mac": { "asset": "^FirstFrameExtractor-macos\\.dmg$", "installer": "mac-dmg-app", "appName": "First Frame Extractor.app" },
         "win": { "asset": "^FirstFrameExtractor-windows\\.zip$", "installer": "win-zip-folder", "exeName": "FirstFrameExtractor.exe" }
