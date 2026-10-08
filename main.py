@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
-from PySide6.QtGui import QImage, QGuiApplication, QFont, QFontDatabase
+from PySide6.QtGui import QIcon, QImage, QGuiApplication, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -32,6 +32,15 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from start_menu import keep_start_menu_shortcut
+
+# The name of the manifest (.nexus/products.json) and the AppUserModelID, for good: the shortcut in
+# Start > Metessi and the taskbar group hang on them.
+APP_NAME = "First Frame Extractor"
+APP_USER_MODEL_ID = "dev.metessi.first-frame-extractor"
+# The icon of the windows: the same file the build gives the exe and the bundle.
+ICON = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "assets" / "icon.png"
 
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".qt"}
 DOWNLOADS = Path.home() / "Downloads"
@@ -793,7 +802,10 @@ QTabBar::tab:selected { color: #ffffff; border-bottom: 2px solid #5b8cff; }
 
 
 def main():
+    # Before any window: the windows group under the shortcut, which this start checks.
+    keep_start_menu_shortcut(APP_NAME, APP_USER_MODEL_ID)
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(str(ICON)))
     app.setStyleSheet(STYLE)
     win = MainWindow()
     win.show()

@@ -12,6 +12,8 @@ from PyInstaller.utils.hooks import collect_data_files
 
 # Include il binario ffmpeg statico fornito da imageio-ffmpeg.
 datas = collect_data_files("imageio_ffmpeg")
+# L'icona delle finestre (main.py, ICON): lo stesso disegno di icon.ico e icon.icns.
+datas += [("assets/icon.png", "assets")]
 
 a = Analysis(
     ["main.py"],
@@ -66,8 +68,8 @@ if is_macos:
         info_plist={
             "NSHighResolutionCapable": True,
             "CFBundleDisplayName": "First Frame Extractor",
-            "CFBundleShortVersionString": "1.0.8",
-            "CFBundleVersion": "1.0.8",
+            "CFBundleShortVersionString": "1.0.9",
+            "CFBundleVersion": "1.0.9",
         },
     )
 else:
