@@ -81,6 +81,8 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist/FirstFrameExtractor-macos.dmg
+          # solo per passarlo al job della release, che lo copia lì: un giorno basta
+          retention-days: 1
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
@@ -88,6 +90,8 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.zip
+          # solo per passarlo al job della release, che lo copia lì: un giorno basta
+          retention-days: 1
 
   # --- Release on tag push, in one go -----------------------------------
   # La release nasce già con il dmg e lo zip (contratto delle release di Nexus, sezione 3):
