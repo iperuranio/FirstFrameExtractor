@@ -78,7 +78,11 @@ pyinstaller --noconfirm FirstFrameExtractor.spec
 The [`.github/workflows/build.yml`](.github/workflows/build.yml) workflow builds the
 executables automatically on **macOS** and **Windows** runners on every push to `main`.
 Pushing a `v*` tag (e.g. `git tag v1.0.0 && git push --tags`) attaches both archives to a
-**Release**.
+**Release**, published only once it holds both.
+
+The Nexus app installs and updates First Frame Extractor on both systems. Before an update it
+runs the app with `--quit`, which asks the open copy to close and ends at once; an extraction
+in progress keeps the app open, and Nexus leaves the update for later.
 
 ## Stack
 

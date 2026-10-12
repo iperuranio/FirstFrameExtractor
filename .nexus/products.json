@@ -7,8 +7,8 @@
       "tagPrefix": "v",
       "icon": "assets/icon.png",
       "platforms": {
-        "mac": { "asset": "^FirstFrameExtractor-macos\\.dmg$", "installer": "mac-dmg-app", "appName": "First Frame Extractor.app" },
-        "win": { "asset": "^FirstFrameExtractor-windows\\.zip$", "installer": "win-zip-folder", "exeName": "FirstFrameExtractor.exe" }
+        "mac": { "asset": "^FirstFrameExtractor-macos\\.dmg$", "installer": "mac-dmg-app", "appName": "First Frame Extractor.app", "quit": "--quit" },
+        "win": { "asset": "^FirstFrameExtractor-windows\\.zip$", "installer": "win-zip-folder", "exeName": "FirstFrameExtractor.exe", "quit": "--quit" }
       }
     }
   ]

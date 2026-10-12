@@ -68,8 +68,8 @@ if is_macos:
         info_plist={
             "NSHighResolutionCapable": True,
             "CFBundleDisplayName": "First Frame Extractor",
-            "CFBundleShortVersionString": "1.0.9",
-            "CFBundleVersion": "1.0.9",
+            "CFBundleShortVersionString": "1.0.10",
+            "CFBundleVersion": "1.0.10",
         },
     )
 else:

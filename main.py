@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from single_instance import QuitListener, request_quit
 from start_menu import keep_start_menu_shortcut
 
 # The name of the manifest (.nexus/products.json) and the AppUserModelID, for good: the shortcut in
@@ -677,6 +678,11 @@ class MainWindow(QWidget):
         root.addWidget(title)
         root.addWidget(tabs, stretch=1)
 
+    def busy(self) -> bool:
+        """An extraction is writing its frame: closing now would lose it."""
+        worker = self._extract.worker
+        return worker is not None and worker.isRunning()
+
     def closeEvent(self, event):
         # Let running probe/extract threads finish before teardown, otherwise a
         # QThread destroyed mid-run would abort on quit.
@@ -802,12 +808,22 @@ QTabBar::tab:selected { color: #ffffff; border-bottom: 2px solid #5b8cff; }
 
 
 def main():
+    # Nexus, before an update: this copy asks the open one to close and ends, with no window.
+    if "--quit" in sys.argv:
+        sys.exit(request_quit())
     # Before any window: the windows group under the shortcut, which this start checks.
     keep_start_menu_shortcut(APP_NAME, APP_USER_MODEL_ID)
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(str(ICON)))
     app.setStyleSheet(STYLE)
     win = MainWindow()
+
+    def close():
+        win.close()
+        app.quit()
+
+    # Kept for the life of the app: it answers the copies started with --quit.
+    listener = QuitListener(busy=win.busy, close=lambda: QTimer.singleShot(0, close))  # noqa: F841
     win.show()
     sys.exit(app.exec())
 
