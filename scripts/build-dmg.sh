@@ -3,13 +3,14 @@
 # build-dmg.sh - costruisce un DMG stilizzato per macOS.
 #
 # Prende dist/First Frame Extractor.app (gia' compilata con PyInstaller)
-# e usa create-dmg per produrre dist/FirstFrameExtractor-macos.dmg con:
+# e usa dmgbuild per produrre dist/FirstFrameExtractor-macos.dmg con:
 #   - l'icona dell'app a sinistra
 #   - il link "Applications" a destra (trascina-per-installare)
 #   - il file "Open if blocked.txt" in basso al centro (istruzioni di sblocco)
 #   - uno sfondo scuro che guida l'utente
 #
-# Requisiti: create-dmg (brew install create-dmg).
+# Requisiti: dmgbuild nel venv (pip install -r requirements-release-mac.txt). Non usa il Finder:
+# create-dmg lo comandava via AppleScript, e senza il permesso di Automazione la build si fermava.
 
 set -euo pipefail
 
@@ -28,8 +29,9 @@ VOL_NAME="First Frame Extractor"
 OUTPUT_DMG="${REPO_ROOT}/dist/FirstFrameExtractor-macos.dmg"
 
 # --- Controlli preliminari --------------------------------------------------
-if ! command -v create-dmg >/dev/null 2>&1; then
-    echo "ERRORE: create-dmg non trovato. Installa con: brew install create-dmg" >&2
+PY="${PY:-${REPO_ROOT}/.venv/bin/python}"
+if ! "${PY}" -c "import dmgbuild" >/dev/null 2>&1; then
+    echo "ERRORE: dmgbuild non trovato in ${PY}. Installa con: ${PY} -m pip install -r requirements-release-mac.txt" >&2
     exit 1
 fi
 
@@ -44,63 +46,17 @@ if [ ! -f "${HELP_SRC}" ]; then
     exit 1
 fi
 
-# --- Staging ---------------------------------------------------------------
-# STAGING contiene SOLO l'app (diventa il contenuto principale del DMG).
-# Il file di istruzioni viene aggiunto a parte con --add-file.
-STAGING="$(mktemp -d)"
-EXTRA="$(mktemp -d)"
-trap 'rm -rf "${STAGING}" "${EXTRA}"' EXIT
-
-echo "Staging in ${STAGING}"
-cp -R "${APP_PATH}" "${STAGING}/"
-
-HELP_STAGED="${EXTRA}/${HELP_NAME}"
-cp "${HELP_SRC}" "${HELP_STAGED}"
-
 # Idempotenza: rimuovi eventuale DMG precedente.
 rm -f "${OUTPUT_DMG}"
 
-# --- Layout finestra --------------------------------------------------------
-# Coordinate coerenti con scripts/make-background.py.
-WINDOW_W=620
-WINDOW_H=480
-ICON_SIZE=120
-
-ARGS=(
-    --volname "${VOL_NAME}"
-    --window-pos 200 120
-    --window-size "${WINDOW_W}" "${WINDOW_H}"
-    --icon-size "${ICON_SIZE}"
-    --icon "${APP_NAME}" 165 195
-    --app-drop-link 455 195
-    --add-file "${HELP_NAME}" "${HELP_STAGED}" 310 392
-    --hdiutil-quiet
-    --no-internet-enable
-)
-
-if [ -f "${BACKGROUND}" ]; then
-    ARGS+=(--background "${BACKGROUND}")
-fi
-
-if [ -f "${VOLICON}" ]; then
-    ARGS+=(--volicon "${VOLICON}")
-fi
-
-echo "Eseguo create-dmg..."
-# create-dmg puo' fallire per timing di Finder/AppleScript: alcuni retry.
-attempt=1
-max_attempts=4
-until create-dmg "${ARGS[@]}" "${OUTPUT_DMG}" "${STAGING}"; do
-    status=$?
-    if [ "${attempt}" -ge "${max_attempts}" ]; then
-        echo "ERRORE: create-dmg fallito dopo ${attempt} tentativi (exit ${status})." >&2
-        exit "${status}"
-    fi
-    echo "create-dmg fallito (tentativo ${attempt}/${max_attempts}), riprovo..." >&2
-    rm -f "${OUTPUT_DMG}"
-    attempt=$((attempt + 1))
-    sleep 3
-done
+echo "Eseguo dmgbuild..."
+"${PY}" -m dmgbuild \
+    -s "${SCRIPT_DIR}/dmg_settings.py" \
+    -D app="${APP_PATH}" \
+    -D help="${HELP_SRC}" \
+    -D background="${BACKGROUND}" \
+    -D volicon="${VOLICON}" \
+    "${VOL_NAME}" "${OUTPUT_DMG}"
 
 echo ""
 echo "DMG creato: ${OUTPUT_DMG}"
