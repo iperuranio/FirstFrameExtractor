@@ -1,0 +1,14 @@
+{
+  "product": "first-frame-extractor",
+  "workflow": "build.yml",
+  "dir": ".",
+  "sources": ["."],
+  "version": { "file": "FirstFrameExtractor.spec", "pattern": "\"CFBundleShortVersionString\": *\"([^\"]*)\"" },
+  "test": [".venv/bin/python", "-m", "unittest", "discover", "-s", "tests"],
+  "build": [[".venv/bin/python", "-m", "PyInstaller", "--noconfirm", "FirstFrameExtractor.spec"], ["bash", "scripts/build-dmg.sh"]],
+  "restore": [],
+  "macPackage": "dist/FirstFrameExtractor-macos.dmg",
+  "plist": "dist/First Frame Extractor.app/Contents/Info.plist",
+  "title": "v{version}",
+  "notes": "First Frame Extractor da {sha}. Si installa e si aggiorna da Nexus."
+}

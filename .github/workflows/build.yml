@@ -1,55 +1,70 @@
 name: Build standalone executables
 
+# A release starts only when asked, never on a push: on the Mac, the shared script of Nexus
+# (`node ~/_DEV/Nexus/scripts/release-mac.mjs` from the repo root, with .nexus/release.json) runs
+# the tests, builds the dmg, opens the draft release v<version> with it and starts this workflow
+# with version and commit. Here only the Windows zip is built, then the release is published:
+# macOS minutes cost ten times Linux ones, and the Actions budget (10 USD a month) is one for
+# every repo of the account.
+#
+# No Actions artifacts: each build uploads its package to the draft release, which Nexus ignores,
+# and the last job publishes it once it holds the dmg and the zip (release contract of Nexus,
+# section 3). The artifact storage is one for the whole account and a full quota stops every repo.
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version, as FirstFrameExtractor.spec declares it'
+        required: true
+      sha:
+        description: 'The commit of the dmg already in the draft'
+        required: true
 
-# Niente artifact di Actions: su un tag v* ogni build carica il suo pacchetto su una release in bozza,
-# che Nexus non considera, e l'ultimo job la pubblica quando ha tutti gli allegati. Così la release
-# nasce intera (contratto delle release di Nexus, sezione 3) e lo spazio degli artifact, comune a
-# tutti i repo dell'account, non ferma mai un rilascio.
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  APP_VERSION: ${{ inputs.version }}
+
 jobs:
+  # The draft must exist already, on the same commit, with the dmg built on the Mac.
   draft:
-    name: Draft release
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Check the draft
     runs-on: ubuntu-latest
+    # A draft release is visible only to who can write releases: read-only gets «release not found».
     permissions:
       contents: write
     steps:
-      - name: Draft
+      - name: Draft v${{ env.APP_VERSION }} with the dmg
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" --draft --verify-tag --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid version: $APP_VERSION"; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid commit: $SHA"; exit 1; }
+          tag="v$APP_VERSION"
+          info=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets)
+          [ "$(jq -r .isDraft <<<"$info")" = "true" ] || { echo "$tag is not a draft"; exit 1; }
+          [ "$(jq -r .targetCommitish <<<"$info")" = "$SHA" ] || { echo "$tag points to another commit"; exit 1; }
+          jq -e '.assets[] | select(.name == "FirstFrameExtractor-macos.dmg" and .state == "uploaded")' <<<"$info" >/dev/null || { echo "the dmg is missing from the draft"; exit 1; }
 
-  build:
-    name: Build (${{ matrix.os }})
+  windows:
+    name: Build (Windows)
     needs: draft
-    # Also on a push to main, where there is no draft: the build is checked, nothing is published.
-    if: ${{ !cancelled() && (needs.draft.result == 'success' || needs.draft.result == 'skipped') }}
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            artifact: FirstFrameExtractor-macos
-          - os: windows-latest
-            artifact: FirstFrameExtractor-windows
-
     steps:
       # The token that writes releases stays out of .git/config: what pip installs cannot read it.
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -62,88 +77,66 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      # La versione sta in FirstFrameExtractor.spec (CFBundleShortVersionString): l'app Mac la dichiara
-      # nell'Info.plist, lo zip Windows in version.txt, ed è lì che la legge l'app Nexus.
-      # Un tag con un'altra versione fa fallire la build: una release non contraddice mai la sua app.
+      # The version lives in FirstFrameExtractor.spec (CFBundleShortVersionString): the zip declares
+      # it in version.txt, where the Nexus app reads it. Another version than the release's stops it.
       - name: Version
         shell: bash
         run: |
           version=$(sed -n 's/.*"CFBundleShortVersionString": *"\([^"]*\)".*/\1/p' FirstFrameExtractor.spec | head -1)
-          [ -n "$version" ] || { echo "ERRORE: CFBundleShortVersionString non trovato in FirstFrameExtractor.spec"; exit 1; }
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "ERRORE: il tag $GITHUB_REF_NAME non corrisponde alla versione $version di FirstFrameExtractor.spec"; exit 1
-          fi
-          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          [ "$version" = "$APP_VERSION" ] || { echo "ERRORE: FirstFrameExtractor.spec dice $version, la release $APP_VERSION"; exit 1; }
 
-      # Su Windows prova anche il collegamento vero nel menu Start (COM): scritto, riletto, lasciato com'è.
+      # Also tries the real Start menu shortcut (COM): written, read back, left as it is.
       - name: Test
         run: python -m unittest discover -s tests -v
 
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm FirstFrameExtractor.spec
 
-      # --- Package output --------------------------------------------------
-      - name: Install create-dmg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install create-dmg
-
-      - name: Package (macOS)
-        if: runner.os == 'macOS'
-        run: bash scripts/build-dmg.sh
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
+      - name: Package
         shell: pwsh
         run: |
           Set-Content -Path "dist/version.txt" -Value $env:APP_VERSION -Encoding utf8NoBOM
-          Compress-Archive -Path "dist/FirstFrameExtractor.exe", "dist/version.txt" -DestinationPath "dist/${{ matrix.artifact }}.zip"
+          Compress-Archive -Path "dist/FirstFrameExtractor.exe", "dist/version.txt" -DestinationPath "dist/FirstFrameExtractor-windows.zip"
 
-      - name: Upload to the draft (macOS)
-        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/FirstFrameExtractor-macos.dmg --repo "$GITHUB_REPOSITORY"
-
-      - name: Upload to the draft (Windows)
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+      - name: Upload to the draft
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" "dist/${{ matrix.artifact }}.zip" --repo "$GITHUB_REPOSITORY"
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$APP_VERSION" dist/FirstFrameExtractor-windows.zip --repo "$GITHUB_REPOSITORY"
 
-  # --- Release on tag push, in one go -----------------------------------
-  # Da bozza a pubblicata in un passo, solo quando ha il dmg e lo zip (contratto delle release di
-  # Nexus, sezione 3): chi controlla mentre la build gira non la vede mai a metà.
+  # From draft to published in one step, only when it holds the dmg and the zip: whoever checks
+  # while the build runs never sees it half done.
   release:
     name: Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [draft, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Publish
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          names=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[] | select(.state == "uploaded") | .name' | sort | tr '\n' ' ')
+          tag="v$APP_VERSION"
+          names=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[] | select(.state == "uploaded") | .name' | sort | tr '\n' ' ')
           expected="FirstFrameExtractor-macos.dmg FirstFrameExtractor-windows.zip "
           [ "$names" = "$expected" ] || { echo "the draft holds «$names», it needs «$expected»"; exit 1; }
-          gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+          gh release edit "$tag" --draft=false --repo "$GITHUB_REPOSITORY"
 
-  # A build that failed or was cancelled leaves no draft behind; the tag stays, for a new run.
+  # A build that failed or was cancelled leaves no draft behind.
   drop-draft:
     name: Drop the draft
-    needs: [draft, build, release]
-    if: ${{ startsWith(github.ref, 'refs/tags/v') && (failure() || cancelled()) }}
+    needs: [draft, windows, release]
+    if: failure() || cancelled()
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Drop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null || echo none)
-          if [ "$draft" = "true" ]; then gh release delete "$GITHUB_REF_NAME" --yes --repo "$GITHUB_REPOSITORY"; else echo "no draft to drop ($draft)"; fi
+          tag="v$APP_VERSION"
+          draft=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null || echo none)
+          if [ "$draft" = "true" ]; then gh release delete "$tag" --yes --repo "$GITHUB_REPOSITORY"; else echo "no draft to drop ($draft)"; fi
